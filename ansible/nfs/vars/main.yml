@@ -1,0 +1,4 @@
+---
+# vars file for nfs
+nfs_server: rancher0
+nfs_owner: vagrant

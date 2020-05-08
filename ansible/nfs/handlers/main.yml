@@ -1,0 +1,4 @@
+---
+# handlers file for nfs
+- name: reload nfs
+  command: 'exportfs -ra'

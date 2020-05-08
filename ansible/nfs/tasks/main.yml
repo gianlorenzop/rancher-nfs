@@ -1,0 +1,48 @@
+# tasks file for nfs
+- name: installs dependencies
+  yum:
+    name: nfs-utils # not required. A package name or package specifier with version, like C(name-1.0).,If a previous version is specified, the task also needs to turn C(allow_downgrade) on. See the C(allow_downgrade) documentation for caveats with downgrading packages.,When using state=latest, this can be C('*') which means run C(yum -y update).,You can also pass a url or a local path to a rpm file (using state=present). To operate on several packages this can accept a comma separated list of packages or (as of 2.0) a list of packages.
+    state: present # not required. choices: absent;installed;latest;present;removed. Whether to install (C(present) or C(installed), C(latest)), or remove (C(absent) or C(removed)) a package.,C(present) and C(installed) will simply ensure that a desired package is installed.,C(latest) will update the specified package if it's not of the latest available version.,C(absent) and C(removed) will remove the specified package.
+
+- name: setup nfs-server
+  block:
+  - name: start and enable nfs server on {{ groups.all [0] }}
+    systemd:
+      name: "{{ item }}"
+      state: started
+    with_items:
+    - nfs-server
+  - name: create dir to be exported on nfs-server {{ groups.all [0] }}
+    file:
+        path: /data/nfs # required. Path to the file being managed.
+        group: "{{ nfs_owner }}" # not required. Name of the group that should own the file/directory, as would be fed to I(chown).
+        state: directory # not required. choices: absent;directory;file;hard;link;touch. If C(directory), all intermediate subdirectories will be created if they do not exist. Since Ansible 1.7 they will be created with the supplied permissions. If C(file), the file will NOT be created if it does not exist; see the C(touch) value or the M(copy) or M(template) module if you want that behavior.  If C(link), the symbolic link will be created or changed. Use C(hard) for hardlinks. If C(absent), directories will be recursively deleted, and files or symlinks will be unlinked. Note that C(absent) will not cause C(file) to fail if the C(path) does not exist as the state did not change. If C(touch) (new in 1.4), an empty file will be created if the C(path) does not exist, while an existing file or directory will receive updated file access and modification times (similar to the way `touch` works from the command line).
+        mode: 0755 # not required. Mode the file or directory should be. For those used to I(/usr/bin/chmod) remember that modes are actually octal numbers. You must either add a leading zero so that Ansible's YAML parser knows it is an octal number (like C(0644) or C(01777)) or quote it (like C('644') or C('1777')) so Ansible receives a string and can do its own conversion from string into number.  Giving Ansible a number without following one of these rules will end up with a decimal number which will have unexpected results. As of version 1.8, the mode may be specified as a symbolic mode (for example, C(u+rwx) or C(u=rw,g=r,o=r)).
+        owner: "{{ nfs_owner }}" # not required. Name of the user that should own the file/directory, as would be fed to I(chown).
+  - name: modify /etc/exports
+    lineinfile:
+      line: "/data/nfs        *(rw,sync,no_subtree_check)"
+      path: /etc/exports
+      backup: true
+    notify:
+    - reload nfs
+  when: inventory_hostname == groups.all[0]
+
+- name: clients setup
+  file:
+    path: /data/nfs
+    state: directory
+    mode: 0755
+    owner: "{{ nfs_owner }}" 
+    group: "{{ nfs_owner }}" 
+- name: Mount nfs volume from {{ groups.all[0] }}
+  mount:
+    path: /data/nfs
+    fstype: nfs
+    src: "{{ groups.all[0] }}:/data/nfs"
+    opts: defaults
+    dump: 0
+    passno: 0
+    state: mounted
+  when: inventory_hostname != groups.all[0]
+
